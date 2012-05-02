@@ -1,5 +1,5 @@
 import unittest
-from symbolic_engine import Memory, Program, Assign, AddOp, Value, Interpreter, GetInput, Store, Context, Load, Goto, IF, Var, UInt32
+from symbolic_engine import Memory, Program, Assign, AddOp, Value, Interpreter, GetInput, Store, Context, Load, Goto, IF, Var, UInt32, AlignmentException
 
 
 class ContextBuilder(object):
@@ -31,6 +31,10 @@ class TestInterpreter(unittest.TestCase):
         interpreter = Interpreter()
         result = interpreter.run(self.build_context(program))
         self.assertEqual(UInt32(0), result.resolve_name("foo").value)
+
+    def test_mem_op_alignment(self):
+        self.assertRaises(AlignmentException, lambda: Store(Value(UInt32(0x80000 + 1)), Value(UInt32(0))))
+        self.assert_(Store(Value(UInt32(0x80000)), Value(UInt32(2))))
 
     def test_assign(self):
         program = Program([

@@ -38,6 +38,9 @@ class UInt32(object):
     def __str__(self):
         return "<%s %x>" % (self.__class__.__name__, self.value)
 
+    def isAligned(self):
+        return (self.value % 32) == 0
+
 
 class Instruction(object):
     def get_name(self):
@@ -192,8 +195,6 @@ class Expression(Instruction):
 
 
 class BinOp(Expression):
-    """"""
-
     def __init__(self, left, right):
         """
         @param left: l
@@ -365,7 +366,7 @@ class Value(Expression):
         return self.tainted
 
 
-class GetInput(Instruction):
+class GetInput(Expression):
     """"""
 
     def __init__(self, source):
@@ -376,23 +377,33 @@ class GetInput(Instruction):
         return self.source.pop(0)
 
 
+class AlignmentException(Exception):
+    pass
+
+
 class Store(Instruction):
     """"""
 
     def __init__(self, address, value):
         """Constructor for Store
         @type address: Value
-        @type value: Value
+        @type value: Expression
         """
+        if not address.value.isAligned():
+            raise AlignmentException
         self.address = address
         self.value = value
 
 
-class Load(Instruction):
+class Load(Expression):
     """"""
 
     def __init__(self, address):
-        """Constructor for Load"""
+        """Constructor for Load
+        @type address: Value
+        """
+        if not address.value.isAligned():
+            raise AlignmentException
         self.address = address
 
 
@@ -401,7 +412,7 @@ class Goto(Instruction):
 
     def __init__(self, pc):
         """Constructor for Goto
-        @type pc: UInt32
+        @type pc: Value
         """
         self.pc = pc
 
