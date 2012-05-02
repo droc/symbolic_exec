@@ -1,5 +1,36 @@
 import math
 
+class UInt32(object):
+    def __init__(self, value):
+        assert value < (2 ** 32), "Initial value of UInt32 can't be greater than word size (32 bits)"
+        self.value = value
+
+    def __div__(self, other):
+        return UInt32(math.floor(self.value / other.value))
+
+    def __divmod__(self, other):
+        return UInt32(self.value % other.value)
+
+    def __eq__(self, other):
+        """
+        @type other: UInt32
+        """
+        return self.value == other.value
+
+    def __add__(self, other):
+        """
+        @type other: UInt32
+        """
+        return UInt32((self.value + other.value) % 32)
+
+
+    def __mul__(self, other):
+        return UInt32((self.value * other.value) % 32)
+
+
+    def __str__(self):
+        return "<%s %x>" % (self.__class__.__name__, self.value)
+
 
 class Instruction(object):
     def get_name(self):
@@ -19,35 +50,50 @@ class MemoryPage(object):
         self.__contents = [0] * self.size
 
     def validate_address(self, address):
+        """
+        @type address: int
+        """
         if not self.base_address <= address < (self.base_address + self.size):
-            raise Exception("address outside page")
+            raise Exception("address %s outside page" % address)
 
     def set_value(self, address, value):
         """
         @type address: int
-        @type value: int
+        @type value: Value
         """
         self.validate_address(address)
         self.__contents[address - self.base_address] = value
 
     def get_value(self, address):
+        """
+        @type address: int
+        """
         self.validate_address(address)
         return self.__contents[address - self.base_address]
 
 
 class Memory(object):
-    def __init__(self, page_size=1024 * 4):
+    def __init__(self, page_size=None):
+        if page_size is None: page_size = 1024 * 4
         self.page_size = page_size
         self.pages = {}
 
-    def set_value(self, v1, v2):
-        page = self.get_page(v1)
-        page.set_value(v1, v2)
+    def set_value(self, address, value):
+        """
+        @type address: UInt32
+        @type value: Value
+        """
+        page = self.get_page(address)
+        page.set_value(address.value, value)
 
     def get_page(self, v1):
-        page_nr = int(math.floor(v1 / self.page_size))
+        """
+        @type v1: UInt32
+        @rtype MemoryPage
+        """
+        page_nr = v1.value / self.page_size
         if not page_nr in self.pages:
-            self.pages[page_nr] = MemoryPage(self.page_size, page_nr * self.page_size)
+            self.pages[page_nr] = MemoryPage(self.page_size, (page_nr * self.page_size))
         return self.pages[page_nr]
 
     def get_page_numbers(self):
@@ -55,10 +101,10 @@ class Memory(object):
 
     def get_value(self, mem_pos):
         """
-        @type mem_pos: int
+        @type mem_pos: UInt32
         """
         page = self.get_page(mem_pos)
-        return page.get_value(mem_pos)
+        return page.get_value(mem_pos.value)
 
 
 class Context(object):
@@ -86,9 +132,12 @@ class Context(object):
         """
         @type address: UInt32
         """
-        return UInt32(self.memory.get_value(address.value))
+        return self.memory.get_value(address)
 
     def resolve_name(self, name):
+        """
+        @rtype Value
+        """
         return self.variables[name]
 
     def copy(self):
@@ -97,9 +146,9 @@ class Context(object):
     def set_mem_value(self, v1, v2):
         """
         @type v1: UInt32
-        @type v2: UInt32
+        @type v2: Value
         """
-        self.memory.set_value(v1.value, v2.value)
+        self.memory.set_value(v1, v2)
 
 
 class Assign(Instruction):
@@ -176,19 +225,19 @@ class Interpreter(object):
         e1 = instr.e1
         e2 = instr.e2
         cond = self.eval_expression(e, context)
-        if cond == UInt32(1):
+        if cond.value == UInt32(1):
             v1 = self.eval_expression(e1, context)
-        elif cond == UInt32(0):
+        elif cond.value == UInt32(0):
             v1 = self.eval_expression(e2, context)
         else:
             raise Exception("Invalid value: expected boolean (0 or 1)")
-        context.pc = v1
+        context.pc = v1.value
         return context
 
     def goto_rule(self, context):
         instr = context.current_instr()
         v1 = self.eval_expression(instr.pc, context)
-        context.pc = v1
+        context.pc = v1.value
         return context
 
     def store_rule(self, context):
@@ -203,7 +252,7 @@ class Interpreter(object):
         v1 = self.eval_expression(instr.e1, context)
         v2 = self.eval_expression(instr.e2, context)
         context.pc += UInt32(1)
-        context.set_mem_value(v1, v2)
+        context.set_mem_value(v1.value, v2)
         return context
 
     def assign_rule(self, context):
@@ -243,7 +292,10 @@ class Interpreter(object):
         @rtype int
         """
         if expression.get_name() == 'AddOp':
-            return self.eval_expression(expression.left, context) + self.eval_expression(expression.right, context)
+            left_value = self.eval_expression(expression.left, context)
+            right_value = self.eval_expression(expression.right, context)
+            inner_value = left_value.value + right_value.value
+            return Value(inner_value, right_value.isTainted() | left_value.isTainted())
         else:
             raise Exception("Operation not implemented")
 
@@ -278,46 +330,32 @@ class Interpreter(object):
         @type expression: Value
         @rtype UInt32
         """
-        return expression.value
+        return expression
 
     def eval_input(self, expression, context):
         """
         @type expression: GetInput
         """
-        return expression.get_input()
+        return Value(expression.get_input(), tainted=True)
 
     def eval_load(self, expression, context):
         """
         @type expression: Load
         @type context: Context
         """
-        return context.get_mem_value(self.eval_expression(expression.address, context))
-
-
-class UInt32(object):
-    def __init__(self, value):
-        assert value < (2 ** 32), "Initial value of UInt32 can't be greater than word size (32 bits)"
-        self.value = value
-
-    def __eq__(self, other):
-        """
-        @type other: UInt32
-        """
-        return self.value == other.value
-
-    def __add__(self, other):
-        """
-        @type other: UInt32
-        """
-        return UInt32((self.value + other.value) % 32)
+        return context.get_mem_value(self.eval_expression(expression.address, context).value)
 
 
 class Value(Expression):
     """"""
 
-    def __init__(self, value):
+    def __init__(self, value, tainted=False):
         """Constructor for Value"""
         self.value = value
+        self.tainted = tainted
+
+    def isTainted(self):
+        return self.tainted
 
 
 class GetInput(Instruction):
@@ -371,6 +409,9 @@ class IF(Expression):
 
     def __init__(self, e, e1, e2):
         """Constructor for IF
+        @param e: An expression to be evaluated for truth value. Must evaluate to either 0 (false) or 1 (true)
+        @param e1: If e is true (1), the "pc" will take the value resulting from evaluating this expression
+        @param e2: If e is false (0), the "pc" will take the value resulting from evaluating this expression
         @type e: Expression
         @type e1: Expression
         @type e2: Expression
