@@ -1,5 +1,6 @@
 import unittest
-from symbolic_engine import Memory, Program, Assign, AddOp, Value, Interpreter, GetInput, Store, Context, Load, Goto, IF, Var, UInt32, AlignmentException
+from symbolic_engine import (Memory, Program, Assign, AddOp, Value, Interpreter, GetInput, Store, Context, Load, Goto,
+                             IF, Var, UInt32, AlignmentException)
 
 
 class ContextBuilder(object):
