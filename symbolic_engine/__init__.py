@@ -11,8 +11,8 @@ class MemoryPage(object):
 
     def __init__(self, size, base_address):
         """Constructor for MemoryPage
-        @type size: long
-        @type base_address: long
+        @type size: int
+        @type base_address: int
         """
         self.base_address = base_address
         self.size = size
@@ -54,6 +54,9 @@ class Memory(object):
         return len(self.pages)
 
     def get_value(self, mem_pos):
+        """
+        @type mem_pos: int
+        """
         page = self.get_page(mem_pos)
         return page.get_value(mem_pos)
 
@@ -64,7 +67,7 @@ class Context(object):
     def __init__(self, memory, variables, pc, program):
         """Constructor for Context
         @type program: Program
-        @type pc: int
+        @type pc: UInt32
         @type variables: dict
         @type memory: Memory
         """
@@ -80,7 +83,10 @@ class Context(object):
         return self.program.get_stmts(self.pc)
 
     def get_mem_value(self, address):
-        return self.memory.get_value(address)
+        """
+        @type address: UInt32
+        """
+        return UInt32(self.memory.get_value(address.value))
 
     def resolve_name(self, name):
         return self.variables[name]
@@ -89,7 +95,11 @@ class Context(object):
         return Context(self.memory, self.variables, self.pc, self.program)
 
     def set_mem_value(self, v1, v2):
-        self.memory.set_value(v1, v2)
+        """
+        @type v1: UInt32
+        @type v2: UInt32
+        """
+        self.memory.set_value(v1.value, v2.value)
 
 
 class Assign(Instruction):
@@ -112,7 +122,7 @@ class Program(object):
         """
 
         try:
-            return self.stmts[pc]
+            return self.stmts[pc.value]
         except IndexError:
             return None
 
@@ -166,9 +176,9 @@ class Interpreter(object):
         e1 = instr.e1
         e2 = instr.e2
         cond = self.eval_expression(e, context)
-        if cond == 1:
+        if cond == UInt32(1):
             v1 = self.eval_expression(e1, context)
-        elif cond == 0:
+        elif cond == UInt32(0):
             v1 = self.eval_expression(e2, context)
         else:
             raise Exception("Invalid value: expected boolean (0 or 1)")
@@ -192,7 +202,7 @@ class Interpreter(object):
         instr = context.current_instr()
         v1 = self.eval_expression(instr.e1, context)
         v2 = self.eval_expression(instr.e2, context)
-        context.pc += 1
+        context.pc += UInt32(1)
         context.set_mem_value(v1, v2)
         return context
 
@@ -203,7 +213,7 @@ class Interpreter(object):
         instr = context.current_instr()
         assert instr.get_name() == 'Assign'
         context.variables[instr.var_name] = self.eval_expression(instr.expression, context)
-        context.pc += 1
+        context.pc += UInt32(1)
         return context
 
 
@@ -239,7 +249,7 @@ class Interpreter(object):
 
     def eval_expression(self, expression, context):
         name = expression.get_name()
-        binops = {'AddOp'}
+        binops = set(['AddOp'])
         if name in binops:
             return self.eval_binop(expression, context)
         elif name == 'Value':
@@ -266,7 +276,7 @@ class Interpreter(object):
     def eval_value(self, expression, context):
         """
         @type expression: Value
-        @rtype int
+        @rtype UInt32
         """
         return expression.value
 
@@ -284,19 +294,22 @@ class Interpreter(object):
         return context.get_mem_value(self.eval_expression(expression.address, context))
 
 
-#        expressions = {
-#            'Load': None,
-#            'BinOp': None,
-#            'UnOp': None,
-#            'Var': None,
-#            'GetInput': None,
-#            'Value': None
-#        }
-#        r = expressions.get(name)
-#
-#        if r is None:
-#            raise NotImplementedError(name)
-#        return r(expression, context)
+class UInt32(object):
+    def __init__(self, value):
+        assert value < (2 ** 32), "Initial value of UInt32 can't be greater than word size (32 bits)"
+        self.value = value
+
+    def __eq__(self, other):
+        """
+        @type other: UInt32
+        """
+        return self.value == other.value
+
+    def __add__(self, other):
+        """
+        @type other: UInt32
+        """
+        return UInt32((self.value + other.value) % 32)
 
 
 class Value(Expression):
