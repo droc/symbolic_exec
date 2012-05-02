@@ -1,14 +1,21 @@
-import math
-
 class UInt32(object):
     def __init__(self, value):
+        """
+        @type value: int
+        """
         assert value < (2 ** 32), "Initial value of UInt32 can't be greater than word size (32 bits)"
         self.value = value
 
     def __div__(self, other):
-        return UInt32(math.floor(self.value / other.value))
+        """
+        @type other: UInt32
+        """
+        return UInt32(self.value / other.value)
 
     def __divmod__(self, other):
+        """
+        @type other: UInt32
+        """
         return UInt32(self.value % other.value)
 
     def __eq__(self, other):
@@ -47,7 +54,7 @@ class MemoryPage(object):
         """
         self.base_address = base_address
         self.size = size
-        self.__contents = [0] * self.size
+        self.__contents = [Value(0)] * self.size
 
     def validate_address(self, address):
         """
@@ -74,6 +81,9 @@ class MemoryPage(object):
 
 class Memory(object):
     def __init__(self, page_size=None):
+        """
+        @type page_size: int
+        """
         if page_size is None: page_size = 1024 * 4
         self.page_size = page_size
         self.pages = {}
@@ -153,14 +163,15 @@ class Context(object):
 
 class Assign(Instruction):
     def __init__(self, var_name, expression):
-        """Constructor for Assign"""
+        """Constructor for Assign
+        @type var_name: str
+        @type expression: Expression
+        """
         self.expression = expression
         self.var_name = var_name
 
 
 class Program(object):
-    """"""
-
     def __init__(self, stmts):
         """Constructor for Program"""
         self.stmts = stmts
@@ -176,16 +187,7 @@ class Program(object):
             return None
 
 
-class Rule(object):
-    def apply(self, context):
-        """
-        @type context: Context
-        """
-        raise NotImplementedError
-
-
 class Expression(Instruction):
-    """"""
     pass
 
 
@@ -194,7 +196,6 @@ class BinOp(Expression):
 
     def __init__(self, left, right):
         """
-
         @param left: l
         @param right: r
         @type left: Expression
@@ -205,8 +206,6 @@ class BinOp(Expression):
 
 
 class AddOp(BinOp):
-    """"""
-
     pass
 
 
@@ -220,7 +219,11 @@ class Interpreter(object):
         }
 
     def eval_if(self, context):
+        """
+        @type context: Context
+        """
         instr = context.current_instr()
+        assert isinstance(instr, IF)
         e = instr.e
         e1 = instr.e1
         e2 = instr.e2
@@ -236,6 +239,7 @@ class Interpreter(object):
 
     def goto_rule(self, context):
         instr = context.current_instr()
+        assert isinstance(instr, Goto)
         v1 = self.eval_expression(instr.pc, context)
         context.pc = v1.value
         return context
@@ -249,8 +253,9 @@ class Interpreter(object):
         @return:
         """
         instr = context.current_instr()
-        v1 = self.eval_expression(instr.e1, context)
-        v2 = self.eval_expression(instr.e2, context)
+        assert isinstance(instr, Store)
+        v1 = self.eval_expression(instr.address, context)
+        v2 = self.eval_expression(instr.value, context)
         context.pc += UInt32(1)
         context.set_mem_value(v1.value, v2)
         return context
@@ -260,7 +265,7 @@ class Interpreter(object):
         @type context: Context
         """
         instr = context.current_instr()
-        assert instr.get_name() == 'Assign'
+        assert isinstance(instr, Assign)
         context.variables[instr.var_name] = self.eval_expression(instr.expression, context)
         context.pc += UInt32(1)
         return context
@@ -272,6 +277,7 @@ class Interpreter(object):
         @type context: Context
         """
         next_instr = context.current_instr()
+        assert isinstance(next_instr, Instruction)
         while next_instr:
             name = next_instr.get_name()
             rule = self.rules.get(name)
@@ -291,6 +297,7 @@ class Interpreter(object):
         @type expression: BinOp
         @rtype int
         """
+        # TODO: the rest of the binary operations (MUL, DIV, SUB, etc.)
         if expression.get_name() == 'AddOp':
             left_value = self.eval_expression(expression.left, context)
             right_value = self.eval_expression(expression.right, context)
@@ -325,14 +332,14 @@ class Interpreter(object):
         """
         return context.resolve_name(expression.var_name)
 
-    def eval_value(self, expression, context):
+    def eval_value(self, expression, _):
         """
         @type expression: Value
         @rtype UInt32
         """
         return expression
 
-    def eval_input(self, expression, context):
+    def eval_input(self, expression, _):
         """
         @type expression: GetInput
         """
@@ -372,10 +379,13 @@ class GetInput(Instruction):
 class Store(Instruction):
     """"""
 
-    def __init__(self, e1, e2):
-        """Constructor for Store"""
-        self.e2 = e2
-        self.e1 = e1
+    def __init__(self, address, value):
+        """Constructor for Store
+        @type address: Value
+        @type value: Value
+        """
+        self.address = address
+        self.value = value
 
 
 class Load(Instruction):
@@ -390,7 +400,9 @@ class Goto(Instruction):
     """"""
 
     def __init__(self, pc):
-        """Constructor for Goto"""
+        """Constructor for Goto
+        @type pc: UInt32
+        """
         self.pc = pc
 
 
