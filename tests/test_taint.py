@@ -2,7 +2,7 @@ import unittest
 from symbolic_engine import Memory, Program, Assign, AddOp, Value, Interpreter, GetInput, Store, Context, Load, Goto, IF, Var, UInt32
 
 
-class TestTaint(unittest.TestCase):
+class TestInterpreter(unittest.TestCase):
     def build_context(self, program):
         return Context(Memory(), {}, UInt32(0), program)
 
