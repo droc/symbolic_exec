@@ -209,15 +209,26 @@ class BinOp(Expression):
 class AddOp(BinOp):
     pass
 
+class TaintPolicy(object):
+    def input_policy(self, src):
+        raise NotImplementedError
+
+class DefaultTaintPolicy(TaintPolicy):
+    def input_policy(self, src):
+        return True
 
 class Interpreter(object):
-    def __init__(self):
+    def __init__(self, taint_policy):
+        """
+        @type taint_policy: TaintPolicy
+        """
         self.rules = {
             'Assign': self.assign_rule,
             'Store': self.store_rule,
             'Goto': self.goto_rule,
             'IF': self.eval_if
         }
+        self.taint_policy = taint_policy
 
     def eval_if(self, context):
         """
@@ -344,7 +355,7 @@ class Interpreter(object):
         """
         @type expression: GetInput
         """
-        return Value(expression.get_input(), tainted=True)
+        return Value(expression.get_input(), tainted=self.taint_policy.input_policy(expression.input_name))
 
     def eval_load(self, expression, context):
         """
@@ -369,9 +380,10 @@ class Value(Expression):
 class GetInput(Expression):
     """"""
 
-    def __init__(self, source):
+    def __init__(self, source, input_name = "default"):
         """Constructor for GetInput"""
         self.source = source
+        self.input_name = input_name
 
     def get_input(self):
         return self.source.pop(0)

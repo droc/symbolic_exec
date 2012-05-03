@@ -1,6 +1,6 @@
 import unittest
 from symbolic_engine import (Memory, Program, Assign, AddOp, Value, Interpreter, GetInput, Store, Context, Load, Goto,
-                             IF, Var, UInt32, AlignmentException)
+                             IF, Var, UInt32, AlignmentException, DefaultTaintPolicy)
 
 
 class ContextBuilder(object):
@@ -20,8 +20,10 @@ class ContextBuilder(object):
 def a_context():
     return ContextBuilder()
 
-
 class TestInterpreter(unittest.TestCase):
+    def setUp(self):
+        self.interpreter = Interpreter(DefaultTaintPolicy())
+
     def build_context(self, program):
         return a_context().with_program(program).build()
 
@@ -29,8 +31,7 @@ class TestInterpreter(unittest.TestCase):
         program = Program([
             Assign('foo', AddOp(Value(UInt32(2 ** 32 - 1)), Value(UInt32(1))))
         ])
-        interpreter = Interpreter()
-        result = interpreter.run(self.build_context(program))
+        result = self.interpreter.run(self.build_context(program))
         self.assertEqual(UInt32(0), result.resolve_name("foo").value)
 
     def test_mem_op_alignment(self):
@@ -41,8 +42,7 @@ class TestInterpreter(unittest.TestCase):
         program = Program([
             Assign('foo', AddOp(Value(UInt32(10)), Value(UInt32(20))))
         ])
-        interpreter = Interpreter()
-        result = interpreter.run(self.build_context(program))
+        result = self.interpreter.run(self.build_context(program))
         self.assertEqual(UInt32(30), result.resolve_name("foo").value)
 
     def test_get_input_assign(self):
@@ -51,8 +51,7 @@ class TestInterpreter(unittest.TestCase):
             Assign("blah", AddOp(Var("foo"), Value(UInt32(1))))
         ])
         context = self.build_context(program)
-        interpreter = Interpreter()
-        result = interpreter.run(context)
+        result = self.interpreter.run(context)
         self.assertEqual(UInt32(1), result.resolve_name("foo").value)
         self.assertEqual(UInt32(2), result.resolve_name("blah").value)
 
@@ -62,8 +61,7 @@ class TestInterpreter(unittest.TestCase):
             Store(Value(mem_address), AddOp(Value(UInt32(10)), Value(UInt32(20))))
         ])
         context = self.build_context(program)
-        interpreter = Interpreter()
-        interpreter.run(context)
+        self.interpreter.run(context)
         self.assertEqual(UInt32(30), context.get_mem_value(mem_address).value)
 
     def test_load(self):
@@ -73,8 +71,7 @@ class TestInterpreter(unittest.TestCase):
             Assign("foo", Load(Value(mem_address)))
         ])
         context = self.build_context(program)
-        interpreter = Interpreter()
-        interpreter.run(context)
+        self.interpreter.run(context)
         self.assertEqual(UInt32(30), context.resolve_name("foo").value)
 
     def test_goto(self):
@@ -85,8 +82,7 @@ class TestInterpreter(unittest.TestCase):
             Assign("blah", Value(UInt32(10)))
         ])
         context = self.build_context(program)
-        interpreter = Interpreter()
-        interpreter.run(context)
+        self.interpreter.run(context)
         self.assertEqual(UInt32(20), context.resolve_name("foo").value)
 
     def test_if(self):
@@ -97,8 +93,7 @@ class TestInterpreter(unittest.TestCase):
             Assign("blah", Value(UInt32(0)))
         ])
         context = self.build_context(program)
-        interpreter = Interpreter()
-        interpreter.run(context)
+        self.interpreter.run(context)
         self.assertEqual(UInt32(20), context.resolve_name("foo").value)
 
 
@@ -113,14 +108,16 @@ class MemoryTest(unittest.TestCase):
 
 
 class TaintTest(unittest.TestCase):
+    def setUp(self):
+        self.interpreter = Interpreter(DefaultTaintPolicy())
+
     def test_input_var(self):
         program = Program([
             Assign("foo", GetInput([UInt32(0)])),
             Assign("blah", AddOp(Var("foo"), Value(UInt32(1))))
         ])
         context = a_context().with_program(program).build()
-        interpreter = Interpreter()
-        interpreter.run(context)
+        self.interpreter.run(context)
         self.assertTrue(context.resolve_name("foo").isTainted())
         self.assertTrue(context.resolve_name("blah").isTainted())
 
@@ -131,8 +128,7 @@ class TaintTest(unittest.TestCase):
             Assign("blah", Value(UInt32(1))),
             ])
         context = a_context().with_program(program).build()
-        interpreter = Interpreter()
-        interpreter.run(context)
+        self.interpreter.run(context)
         self.assertTrue(context.resolve_name("foo").isTainted())
         self.assertFalse(context.resolve_name("blah").isTainted())
 
@@ -144,6 +140,5 @@ class TaintTest(unittest.TestCase):
             Assign("blah", Load(Value(UInt32(mem_pos)))),
             ])
         context = a_context().with_program(program).build()
-        interpreter = Interpreter()
-        interpreter.run(context)
+        self.interpreter.run(context)
         self.assertTrue(context.resolve_name("blah").isTainted())
