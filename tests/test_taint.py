@@ -1,6 +1,6 @@
 import unittest
 from symbolic_engine import (Memory, Program, Assign, AddOp, Value, Interpreter, GetInput, Store, Context, Load, Goto,
-                             IF, Var, UInt32, AlignmentException, DefaultTaintPolicy)
+                             IF, Var, UInt32, DefaultTaintPolicy)
 
 
 class ContextBuilder(object):
@@ -20,6 +20,7 @@ class ContextBuilder(object):
 def a_context():
     return ContextBuilder()
 
+
 class TestInterpreter(unittest.TestCase):
     def setUp(self):
         self.interpreter = Interpreter(DefaultTaintPolicy())
@@ -34,9 +35,9 @@ class TestInterpreter(unittest.TestCase):
         result = self.interpreter.run(self.build_context(program))
         self.assertEqual(UInt32(0), result.resolve_name("foo").value)
 
-    def test_mem_op_alignment(self):
-        self.assertRaises(AlignmentException, lambda: Store(Value(UInt32(0x80000 + 1)), Value(UInt32(0))))
-        self.assert_(Store(Value(UInt32(0x80000)), Value(UInt32(2))))
+    #    def test_mem_op_alignment(self):
+    #        self.assertRaises(AlignmentException, lambda: Store(Value(UInt32(0x80000 + 1)), Value(UInt32(0))))
+    #        self.assert_(Store(Value(UInt32(0x80000)), Value(UInt32(2))))
 
     def test_assign(self):
         program = Program([
@@ -95,6 +96,19 @@ class TestInterpreter(unittest.TestCase):
         context = self.build_context(program)
         self.interpreter.run(context)
         self.assertEqual(UInt32(20), context.resolve_name("foo").value)
+
+
+    def test_taint_memory_address(self):
+        mem_pos = 0x1000
+        program = Program([
+            Assign("EAX", GetInput([UInt32(mem_pos)])),
+            Assign("EBX", Value(UInt32(1))),
+            Store(Var("EAX"), Var("EBX"))
+        ])
+        context = self.build_context(program)
+        self.interpreter.run(context)
+        self.assertTrue(context.get_mem_address_taint(UInt32(0x1000)), 'Expected memory addressed tainted after writen '
+                                                                       'with memory address controlled by attacker')
 
 
 class MemoryTest(unittest.TestCase):

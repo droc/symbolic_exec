@@ -58,6 +58,7 @@ class MemoryPage(object):
         self.base_address = base_address
         self.size = size
         self.__contents = [Value(0)] * self.size
+        self.__tainting = [0] * self.size
 
     def validate_address(self, address):
         """
@@ -80,6 +81,16 @@ class MemoryPage(object):
         """
         self.validate_address(address)
         return self.__contents[address - self.base_address]
+
+    def get_taint(self, address):
+        return self.__tainting[address - self.base_address]
+
+    def set_taint(self,address,  taint):
+        """
+        @type address: int
+        @type taint: int
+        """
+        self.__tainting[address - self.base_address] = taint
 
 
 class Memory(object):
@@ -118,6 +129,23 @@ class Memory(object):
         """
         page = self.get_page(mem_pos)
         return page.get_value(mem_pos.value)
+
+    def get_taint(self, address):
+        """
+        @type address: UInt32
+        """
+        page = self.get_page(address)
+        assert isinstance(page, MemoryPage)
+        return page.get_taint(address.value)
+
+    def set_taint(self, address, taint):
+        """
+        @type address: UInt32
+        @type taint: int
+        """
+        page = self.get_page(address)
+        assert isinstance(page, MemoryPage)
+        page.set_taint(address.value, int(taint))
 
 
 class Context(object):
@@ -162,6 +190,19 @@ class Context(object):
         @type v2: Value
         """
         self.memory.set_value(v1, v2)
+
+    def get_mem_address_taint(self, address):
+        """
+        @type address: UInt32
+        """
+        return bool(self.memory.get_taint(address))
+
+    def set_mem_address_taint(self, address, is_tainted):
+        """
+        @type address: UInt32
+        @type is_tainted: bool
+        """
+        self.memory.set_taint(address, int(is_tainted))
 
 
 class Assign(Instruction):
@@ -270,6 +311,7 @@ class Interpreter(object):
         v2 = self.eval_expression(instr.value, context)
         context.pc += UInt32(1)
         context.set_mem_value(v1.value, v2)
+        context.set_mem_address_taint(v1.value, v1.isTainted())
         return context
 
     def assign_rule(self, context):
@@ -398,11 +440,9 @@ class Store(Instruction):
 
     def __init__(self, address, value):
         """Constructor for Store
-        @type address: Value
+        @type address: Expression
         @type value: Expression
         """
-        if not address.value.isAligned():
-            raise AlignmentException
         self.address = address
         self.value = value
 
@@ -412,10 +452,8 @@ class Load(Expression):
 
     def __init__(self, address):
         """Constructor for Load
-        @type address: Value
+        @type address: Expression
         """
-        if not address.value.isAligned():
-            raise AlignmentException
         self.address = address
 
 
