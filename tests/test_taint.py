@@ -1,6 +1,6 @@
 import unittest
 from symbolic_engine import (Memory, Program, Assign, AddOp, Value, Interpreter, GetInput, Store, Context, Load, Goto,
-                             IF, Var, UInt32, DefaultTaintPolicy)
+                             IF, Var, UInt32, DefaultTaintPolicy, DefaultTaintCheckHandler, AttackException, MulOp, SubOp)
 
 
 class ContextBuilder(object):
@@ -23,7 +23,7 @@ def a_context():
 
 class TestInterpreter(unittest.TestCase):
     def setUp(self):
-        self.interpreter = Interpreter(DefaultTaintPolicy())
+        self.interpreter = Interpreter(DefaultTaintPolicy(), DefaultTaintCheckHandler())
 
     def build_context(self, program):
         return a_context().with_program(program).build()
@@ -38,6 +38,13 @@ class TestInterpreter(unittest.TestCase):
     #    def test_mem_op_alignment(self):
     #        self.assertRaises(AlignmentException, lambda: Store(Value(UInt32(0x80000 + 1)), Value(UInt32(0))))
     #        self.assert_(Store(Value(UInt32(0x80000)), Value(UInt32(2))))
+
+    def test_bin_op(self):
+        program = Program([
+            Assign("foo", MulOp(Value(UInt32(3)), AddOp(Value(UInt32(2)), Value(UInt32(3)))))
+        ])
+        result = self.interpreter.run(self.build_context(program))
+        self.assertEqual(UInt32(15), result.resolve_name("foo").value)
 
     def test_assign(self):
         program = Program([
@@ -123,7 +130,7 @@ class MemoryTest(unittest.TestCase):
 
 class TaintTest(unittest.TestCase):
     def setUp(self):
-        self.interpreter = Interpreter(DefaultTaintPolicy())
+        self.interpreter = Interpreter(DefaultTaintPolicy(), DefaultTaintCheckHandler())
 
     def test_input_var(self):
         program = Program([
@@ -156,3 +163,26 @@ class TaintTest(unittest.TestCase):
         context = a_context().with_program(program).build()
         self.interpreter.run(context)
         self.assertTrue(context.resolve_name("blah").isTainted())
+
+    def test_positive_taint_check(self):
+        mem_pos = 0x1000
+        program = Program([
+            Assign("foo", GetInput([UInt32(0)])),
+            Store(Value(UInt32(mem_pos)), Var("foo")),
+            Assign("blah", Load(Value(UInt32(mem_pos)))),
+            Goto(Var("blah"))
+        ])
+        context = a_context().with_program(program).build()
+        self.assertRaises(AttackException, lambda: self.interpreter.run(context))
+
+
+#class TestSymbolicExecution(unittest.TestCase):
+#    def setUp(self):
+#        self.interpreter = Interpreter(DefaultTaintPolicy(), DefaultTaintCheckHandler())
+#
+#    def test_bed(self):
+#        program = Program([
+#            Assign("X", MulOp(Value(UInt32(2)), GetInput([[UInt32(3)]]))),
+#            IF(SubOp(Var("X"), Value(UInt32(5))), Value(UInt32(3)), Value(UInt32(4))),
+#
+#        ])
