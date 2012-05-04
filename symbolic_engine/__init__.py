@@ -85,7 +85,7 @@ class MemoryPage(object):
     def get_taint(self, address):
         return self.__tainting[address - self.base_address]
 
-    def set_taint(self,address,  taint):
+    def set_taint(self, address, taint):
         """
         @type address: int
         @type taint: int
@@ -250,18 +250,68 @@ class BinOp(Expression):
 class AddOp(BinOp):
     pass
 
+
+class MulOp(BinOp):
+    pass
+
+class SubOp(BinOp):
+    pass
+
 class TaintPolicy(object):
     def input_policy(self, src):
         raise NotImplementedError
+
+    def goto_check(self, v1):
+        """
+        @type v1: Value
+        """
+        raise NotImplementedError
+
+    def tainted_address(self, address, value):
+        """
+
+        @param address: memory address
+        @param value: value in that address
+        @type address: Value
+        @type value: Value
+        @return: bool
+        """
+        raise NotImplementedError
+
+
+class AttackException(Exception):
+    pass
+
+
+class TaintCheckHandler(object):
+    def handle_goto(self, pc, instr):
+        pass
+
+
+class DefaultTaintCheckHandler(TaintCheckHandler):
+    def handle_goto(self, pc, instr):
+        raise AttackException, "Probable attack detected, instruction %s at pc %s" % (pc, instr)
+
 
 class DefaultTaintPolicy(TaintPolicy):
     def input_policy(self, src):
         return True
 
+    def goto_check(self, v1):
+        """
+        @type v1: Value
+        """
+        return not v1.isTainted()
+
+    def tainted_address(self, address, value):
+        return address.isTainted()
+
+
 class Interpreter(object):
-    def __init__(self, taint_policy):
+    def __init__(self, taint_policy, taint_check_handler):
         """
         @type taint_policy: TaintPolicy
+        @type taint_check_handler: TaintCheckHandler
         """
         self.rules = {
             'Assign': self.assign_rule,
@@ -270,6 +320,7 @@ class Interpreter(object):
             'IF': self.eval_if
         }
         self.taint_policy = taint_policy
+        self.taint_check_handler = taint_check_handler
 
     def eval_if(self, context):
         """
@@ -294,6 +345,8 @@ class Interpreter(object):
         instr = context.current_instr()
         assert isinstance(instr, Goto)
         v1 = self.eval_expression(instr.pc, context)
+        if not self.taint_policy.goto_check(v1):
+            self.taint_check_handler.handle_goto(context.pc, instr)
         context.pc = v1.value
         return context
 
@@ -311,7 +364,7 @@ class Interpreter(object):
         v2 = self.eval_expression(instr.value, context)
         context.pc += UInt32(1)
         context.set_mem_value(v1.value, v2)
-        context.set_mem_address_taint(v1.value, v1.isTainted())
+        context.set_mem_address_taint(v1.value, self.taint_policy.tainted_address(v1, v2)) # v1.isTainted()
         return context
 
     def assign_rule(self, context):
@@ -352,17 +405,22 @@ class Interpreter(object):
         @rtype int
         """
         # TODO: the rest of the binary operations (MUL, DIV, SUB, etc.)
-        if expression.get_name() == 'AddOp':
-            left_value = self.eval_expression(expression.left, context)
-            right_value = self.eval_expression(expression.right, context)
+        name = expression.get_name()
+        left_value = self.eval_expression(expression.left, context)
+        right_value = self.eval_expression(expression.right, context)
+        if name == 'AddOp':
             inner_value = left_value.value + right_value.value
-            return Value(inner_value, right_value.isTainted() | left_value.isTainted())
+        elif name == 'MulOp':
+            inner_value = left_value.value * right_value.value
+        elif name == 'SubOp':
+            inner_value = left_value.value - right_value.value
         else:
             raise Exception("Operation not implemented")
+        return Value(inner_value, right_value.isTainted() or left_value.isTainted())
 
     def eval_expression(self, expression, context):
         name = expression.get_name()
-        binops = set(['AddOp'])
+        binops = set(['AddOp', 'MulOp', 'SubOp'])
         if name in binops:
             return self.eval_binop(expression, context)
         elif name == 'Value':
@@ -422,7 +480,7 @@ class Value(Expression):
 class GetInput(Expression):
     """"""
 
-    def __init__(self, source, input_name = "default"):
+    def __init__(self, source, input_name="default"):
         """Constructor for GetInput"""
         self.source = source
         self.input_name = input_name
@@ -462,7 +520,7 @@ class Goto(Instruction):
 
     def __init__(self, pc):
         """Constructor for Goto
-        @type pc: Value
+        @type pc: Expression
         """
         self.pc = pc
 
