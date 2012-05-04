@@ -1,6 +1,7 @@
 import unittest
 from symbolic_engine import (Memory, Program, Assign, AddOp, Value, Interpreter, GetInput, Store, Context, Load, Goto,
-                             IF, Var, UInt32, DefaultTaintPolicy, DefaultTaintCheckHandler, AttackException, MulOp, SubOp)
+                             IF, Var, UInt32, DefaultTaintPolicy, DefaultTaintCheckHandler, AttackException, MulOp,
+                             SubOp, ConcolicInterpreter, EQ, GT, IdProvider)
 
 
 class ContextBuilder(object):
@@ -176,13 +177,18 @@ class TaintTest(unittest.TestCase):
         self.assertRaises(AttackException, lambda: self.interpreter.run(context))
 
 
-#class TestSymbolicExecution(unittest.TestCase):
-#    def setUp(self):
-#        self.interpreter = Interpreter(DefaultTaintPolicy(), DefaultTaintCheckHandler())
-#
-#    def test_bed(self):
-#        program = Program([
-#            Assign("X", MulOp(Value(UInt32(2)), GetInput([[UInt32(3)]]))),
-#            IF(SubOp(Var("X"), Value(UInt32(5))), Value(UInt32(3)), Value(UInt32(4))),
-#
-#        ])
+class TestSymbolicExecution(unittest.TestCase):
+    def setUp(self):
+        self.interpreter = ConcolicInterpreter(DefaultTaintPolicy(), DefaultTaintCheckHandler(), IdProvider(),
+                                               print_statements=True)
+
+    def test_bed(self):
+        program = Program([
+            Assign("X", MulOp(Value(UInt32(2)), GetInput([UInt32(3)]))),
+            IF(EQ(SubOp(Var("X"), AddOp(Value(UInt32(3)), Value(UInt32(2)))), Value(UInt32(15))), Value(UInt32(2)),
+               Value(UInt32(3))),
+            Assign("Y", AddOp(Value(UInt32(3)), Var("X"))),
+            IF(GT(Var("Y"), SubOp(GetInput([]), Value(UInt32(20)))), Value(UInt32(4)), Value(UInt32(5)))
+        ])
+        self.interpreter.run(a_context().with_program(program).build())
+        print str(self.interpreter.constraints)

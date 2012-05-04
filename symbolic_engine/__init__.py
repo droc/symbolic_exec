@@ -1,8 +1,11 @@
+from exceptions import Exception, NotImplementedError
+
 class UInt32(object):
     def __init__(self, value):
         """
         @type value: int
         """
+        assert type(value) == int or type(value) == long, "UInt32 expects int, received %s" % type(value)
         assert value < (2 ** 32), "Initial value of UInt32 can't be greater than word size (32 bits)"
         self.value = value
 
@@ -36,7 +39,8 @@ class UInt32(object):
 
 
     def __str__(self):
-        return "<%s %x>" % (self.__class__.__name__, self.value)
+        return "%d" % (self.value)
+        #return "<%s 0x%08x>" % (self.__class__.__name__, self.value)
 
     def isAligned(self):
         return (self.value % 32) == 0
@@ -214,6 +218,8 @@ class Assign(Instruction):
         self.expression = expression
         self.var_name = var_name
 
+    def __str__(self):
+        return "%s := %s" % (self.var_name, str(self.expression))
 
 class Program(object):
     def __init__(self, stmts):
@@ -236,6 +242,8 @@ class Expression(Instruction):
 
 
 class BinOp(Expression):
+    SYM = "ERROR"
+
     def __init__(self, left, right):
         """
         @param left: l
@@ -246,16 +254,29 @@ class BinOp(Expression):
         self.right = right
         self.left = left
 
+    def __str__(self):
+        return "(%s) %s (%s)" % (str(self.left), self.SYM, str(self.right))
+
 
 class AddOp(BinOp):
-    pass
+    SYM = "+"
 
 
 class MulOp(BinOp):
-    pass
+    SYM = "*"
+
 
 class SubOp(BinOp):
-    pass
+    SYM = "-"
+
+
+class EQ(BinOp):
+    SYM = "=="
+
+
+class GT(BinOp):
+    SYM = ">"
+
 
 class TaintPolicy(object):
     def input_policy(self, src):
@@ -307,8 +328,8 @@ class DefaultTaintPolicy(TaintPolicy):
         return address.isTainted()
 
 
-class Interpreter(object):
-    def __init__(self, taint_policy, taint_check_handler):
+class BaseInterpreter(object):
+    def __init__(self, taint_policy, taint_check_handler, print_statements = False):
         """
         @type taint_policy: TaintPolicy
         @type taint_check_handler: TaintCheckHandler
@@ -321,6 +342,7 @@ class Interpreter(object):
         }
         self.taint_policy = taint_policy
         self.taint_check_handler = taint_check_handler
+        self.print_statements = print_statements
 
     def eval_if(self, context):
         """
@@ -377,7 +399,6 @@ class Interpreter(object):
         context.pc += UInt32(1)
         return context
 
-
     def run(self, context):
         """
         Fetch-execute loop
@@ -386,6 +407,8 @@ class Interpreter(object):
         next_instr = context.current_instr()
         assert isinstance(next_instr, Instruction)
         while next_instr:
+            if self.print_statements:
+                print context.pc.value, ": ", str(next_instr)
             name = next_instr.get_name()
             rule = self.rules.get(name)
             if rule is None:
@@ -408,19 +431,27 @@ class Interpreter(object):
         name = expression.get_name()
         left_value = self.eval_expression(expression.left, context)
         right_value = self.eval_expression(expression.right, context)
-        if name == 'AddOp':
-            inner_value = left_value.value + right_value.value
-        elif name == 'MulOp':
-            inner_value = left_value.value * right_value.value
-        elif name == 'SubOp':
-            inner_value = left_value.value - right_value.value
+        if not (isinstance(left_value, Value) and isinstance(right_value, Value)):
+            return expression.__class__(self.eval_expression(left_value, context),
+                                        self.eval_expression(right_value, context))
         else:
-            raise Exception("Operation not implemented")
-        return Value(inner_value, right_value.isTainted() or left_value.isTainted())
+            if name == 'AddOp':
+                inner_value = left_value.value + right_value.value
+            elif name == 'MulOp':
+                inner_value = left_value.value * right_value.value
+            elif name == 'SubOp':
+                inner_value = left_value.value - right_value.value
+            elif name == 'EQ':
+                inner_value = 1 if left_value.value == right_value.value else 0
+            elif name == 'GT':
+                inner_value = 1 if left_value.value > right_value.value else 0
+            else:
+                raise Exception("Operation not implemented")
+            return Value(inner_value, right_value.isTainted() or left_value.isTainted())
 
     def eval_expression(self, expression, context):
         name = expression.get_name()
-        binops = set(['AddOp', 'MulOp', 'SubOp'])
+        binops = set(['AddOp', 'MulOp', 'SubOp', 'EQ', 'GT'])
         if name in binops:
             return self.eval_binop(expression, context)
         elif name == 'Value':
@@ -465,6 +496,81 @@ class Interpreter(object):
         return context.get_mem_value(self.eval_expression(expression.address, context).value)
 
 
+class Interpreter(BaseInterpreter):
+    pass
+
+
+class SymExpression(object):
+    pass
+
+
+class _SymTrue(SymExpression):
+    def __str__(self):
+        return "True"
+
+
+class _SymFalse(SymExpression):
+    def __str__(self):
+        return "False"
+
+SymTrue = _SymTrue()
+SymFalse = _SymFalse()
+
+class SymInput(Expression):
+    def __init__(self, name):
+        self.name = name
+
+    def __str__(self):
+        return self.name
+
+
+class And(SymExpression):
+    def __init__(self, left, right):
+        self.right = right
+        self.left = left
+
+    def __str__(self):
+        return "%s AND %s" % (str(self.right), str(self.left))
+
+
+class IdProvider(object):
+    def __init__(self):
+        self.base_name = "s"
+        self.__last_id = 0
+
+    def get_next_name(self):
+        self.__last_id += 1
+        return "%s_%d" % (self.base_name, self.__last_id)
+
+
+class ConcolicInterpreter(BaseInterpreter):
+    def __init__(self, taint_policy, taint_check_handler, id_provider, print_statements = False):
+        super(ConcolicInterpreter, self).__init__(taint_policy, taint_check_handler, print_statements)
+        self.constraints = SymTrue
+        self.id_provider = id_provider
+
+    def eval_input(self, expression, context):
+        return SymInput(self.id_provider.get_next_name())
+
+    def eval_if(self, context):
+        if_instr = context.current_instr()
+        assert isinstance(if_instr, IF)
+        e = if_instr.e
+        e1 = if_instr.e1
+        #e2 = if_instr.e2
+        e_v = self.eval_expression(e, context)
+        self.constraints = And(self.constraints, e_v)
+        e1_v = self.eval_expression(e1, context)
+        context.pc = e1_v.value
+        return context
+
+    def eval_expression(self, expression, context):
+        name = expression.get_name()
+        if name == "SymInput":
+            return expression
+        return super(ConcolicInterpreter, self).eval_expression(expression, context)
+
+
 class Value(Expression):
     """"""
 
@@ -475,6 +581,9 @@ class Value(Expression):
 
     def isTainted(self):
         return self.tainted
+
+    def __str__(self):
+        return str(self.value)
 
 
 class GetInput(Expression):
@@ -488,6 +597,8 @@ class GetInput(Expression):
     def get_input(self):
         return self.source.pop(0)
 
+    def __str__(self):
+        return "get_input()"
 
 class AlignmentException(Exception):
     pass
@@ -534,6 +645,9 @@ class Var(Expression):
         """
         self.var_name = var_name
 
+    def __str__(self):
+        return "%s" % (self.var_name)
+
 
 class IF(Expression):
     """"""
@@ -550,4 +664,5 @@ class IF(Expression):
         self.e2 = e2
         self.e1 = e1
         self.e = e
-        
+    def __str__(self):
+        return "if %s then goto %s else goto %s" % (self.e, self.e1, self.e2)
