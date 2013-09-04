@@ -79,6 +79,8 @@ class TestInterpreter(unittest.TestCase):
             Store(Value(mem_address), AddOp(Value(UInt32(10)), Value(UInt32(20)))),
             Assign("foo", Load(Value(mem_address)))
         ])
+        print repr(program)
+        print str(program)
         context = self.build_context(program)
         self.interpreter.run(context)
         self.assertEqual(UInt32(30), context.resolve_name("foo").value)
@@ -191,4 +193,5 @@ class TestSymbolicExecution(unittest.TestCase):
             IF(GT(Var("Y"), SubOp(GetInput([]), Value(UInt32(20)))), Value(UInt32(4)), Value(UInt32(5)))
         ])
         self.interpreter.run(a_context().with_program(program).build())
-        print str(self.interpreter.constraints)
+        print(str(self.interpreter.constraints))
+        self.fail("no assertion yet")

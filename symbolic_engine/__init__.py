@@ -1,4 +1,8 @@
-from exceptions import Exception, NotImplementedError
+try:
+    #noinspection PyUnresolvedReferences
+    from exceptions import Exception, NotImplementedError
+except Exception:
+    pass
 
 class UInt32(object):
     def __init__(self, value):
@@ -221,6 +225,7 @@ class Assign(Instruction):
     def __str__(self):
         return "%s := %s" % (self.var_name, str(self.expression))
 
+
 class Program(object):
     def __init__(self, stmts):
         """Constructor for Program"""
@@ -311,7 +316,7 @@ class TaintCheckHandler(object):
 
 class DefaultTaintCheckHandler(TaintCheckHandler):
     def handle_goto(self, pc, instr):
-        raise AttackException, "Probable attack detected, instruction %s at pc %s" % (pc, instr)
+        raise AttackException("Probable attack detected, instruction %s at pc %s" % (pc, instr))
 
 
 class DefaultTaintPolicy(TaintPolicy):
@@ -329,7 +334,7 @@ class DefaultTaintPolicy(TaintPolicy):
 
 
 class BaseInterpreter(object):
-    def __init__(self, taint_policy, taint_check_handler, print_statements = False):
+    def __init__(self, taint_policy, taint_check_handler, print_statements=False):
         """
         @type taint_policy: TaintPolicy
         @type taint_check_handler: TaintCheckHandler
@@ -433,7 +438,7 @@ class BaseInterpreter(object):
         right_value = self.eval_expression(expression.right, context)
         if not (isinstance(left_value, Value) and isinstance(right_value, Value)):
             return expression.__class__(self.eval_expression(left_value, context),
-                                        self.eval_expression(right_value, context))
+                self.eval_expression(right_value, context))
         else:
             if name == 'AddOp':
                 inner_value = left_value.value + right_value.value
@@ -544,7 +549,7 @@ class IdProvider(object):
 
 
 class ConcolicInterpreter(BaseInterpreter):
-    def __init__(self, taint_policy, taint_check_handler, id_provider, print_statements = False):
+    def __init__(self, taint_policy, taint_check_handler, id_provider, print_statements=False):
         super(ConcolicInterpreter, self).__init__(taint_policy, taint_check_handler, print_statements)
         self.constraints = SymTrue
         self.id_provider = id_provider
@@ -599,6 +604,7 @@ class GetInput(Expression):
 
     def __str__(self):
         return "get_input()"
+
 
 class AlignmentException(Exception):
     pass
@@ -664,5 +670,6 @@ class IF(Expression):
         self.e2 = e2
         self.e1 = e1
         self.e = e
+
     def __str__(self):
         return "if %s then goto %s else goto %s" % (self.e, self.e1, self.e2)
