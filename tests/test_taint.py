@@ -183,12 +183,15 @@ class TestSymbolicExecution(unittest.TestCase):
                                                print_statements=True)
 
     def test_bed(self):
+        the_input = GetInput([UInt32(3), UInt32(1)])
         program = Program([
-            Assign("X", MulOp(Value(UInt32(2)), GetInput([UInt32(3)]))),
+            Assign("X", MulOp(Value(UInt32(2)), the_input)),
             IF(EQ(SubOp(Var("X"), AddOp(Value(UInt32(3)), Value(UInt32(2)))), Value(UInt32(15))), Value(UInt32(2)),
                Value(UInt32(3))),
             Assign("Y", AddOp(Value(UInt32(3)), Var("X"))),
-            IF(GT(Var("Y"), SubOp(GetInput([]), Value(UInt32(20)))), Value(UInt32(4)), Value(UInt32(5)))
+            IF(GT(Var("Y"), SubOp(the_input, Value(UInt32(20)))), Value(UInt32(4)), Value(UInt32(5)))
         ])
         self.interpreter.run(a_context().with_program(program).build())
         print str(self.interpreter.constraints)
+        print repr(self.interpreter.constraints)
+
